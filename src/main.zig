@@ -7,28 +7,94 @@ const win32 = struct {
     usingnamespace @import("win32").foundation;
     usingnamespace @import("win32").system.system_services;
     usingnamespace @import("win32").ui.windows_and_messaging;
-    usingnamespace @import("win32").graphics.gdi;
+    usingnamespace @import("win32").ui.input.keyboard_and_mouse;
 };
-const L = win32.L;
 const HWND = win32.HWND;
 
-fn fatal(comptime fmt: []const u8, args: anytype) noreturn {
-    if (std.fmt.allocPrintZ(std.heap.page_allocator, fmt, args)) |msg| {
-        _ = win32.MessageBoxA(null, msg, "Fatal Error", .{});
-    } else |e| switch (e) {
-        error.OutOfMemory => _ = win32.MessageBoxA(null, "Out of memory", "Fatal Error", .{}),
-    }
-    std.os.windows.kernel32.ExitProcess(1);
-}
+var caps_pressed: bool = false;
+var shift_pressed: bool = false;
 
 pub fn kbHookProc(nCode: i32, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(WINAPI) win32.LRESULT {
     if (nCode < 0) {
-        std.debug.print("maybe something here?", .{});
         return win32.CallNextHookEx(null, nCode, wParam, lParam);
     }
+
     const pKeyData: *win32.KBDLLHOOKSTRUCT = @ptrFromInt(@as(usize, @bitCast(lParam)));
+    const vkey = @as(win32.VIRTUAL_KEY, @enumFromInt(pKeyData.vkCode));
     std.debug.print("Key triggered: {}\n", .{pKeyData.scanCode});
-    return win32.CallNextHookEx(null, nCode, wParam, lParam);
+    switch (vkey) {
+        win32.VK_CAPITAL => return processCaps(nCode, wParam, lParam),
+        win32.VK_SHIFT => return processShift(nCode, wParam, lParam),
+        else => return win32.CallNextHookEx(null, nCode, wParam, lParam),
+    }
+}
+
+fn processCaps(nCode: i32, wParam: win32.WPARAM, lParam: win32.LPARAM) win32.LRESULT {
+    _ = nCode;
+    _ = lParam;
+    switch (wParam) {
+        win32.WM_KEYDOWN => {
+            if (caps_pressed) {
+                return -1;
+            } else {
+                caps_pressed = true;
+                //TODO: if shift pressed then instead of switching layout toggle caps lock
+                switchLayout();
+                return -1;
+            }
+        },
+        win32.WM_KEYUP, win32.WM_SYSKEYUP => {
+            if (caps_pressed) {
+                caps_pressed = false;
+                return -1;
+            } else {
+                std.debug.print("Caps key released while caps_pressed = false", .{});
+                return -1;
+            }
+        },
+        win32.WM_SYSKEYDOWN => {
+            if (caps_pressed) {
+                return -1;
+            } else {
+                caps_pressed = true;
+                return -1;
+            }
+        },
+        else => unreachable,
+    }
+}
+
+fn processShift(nCode: i32, wParam: win32.WPARAM, lParam: win32.LPARAM) win32.LRESULT {
+    switch (wParam) {
+        win32.WM_KEYDOWN, win32.WM_SYSKEYDOWN => {
+            shift_pressed = true;
+            return win32.CallNextHookEx(null, nCode, wParam, lParam);
+        },
+        win32.WM_KEYUP, win32.WM_SYSKEYUP => {
+            shift_pressed = false;
+            return win32.CallNextHookEx(null, nCode, wParam, lParam);
+        },
+        else => unreachable,
+    }
+}
+
+fn switchLayout() void {
+    var sequence = [_]win32.INPUT{std.mem.zeroInit(win32.INPUT, .{})} ** 4;
+    sequence[0].type = win32.INPUT_KEYBOARD;
+    sequence[0].Anonymous.ki.wVk = win32.VK_MENU;
+    sequence[1].type = win32.INPUT_KEYBOARD;
+    sequence[1].Anonymous.ki.wVk = win32.VK_LSHIFT;
+    sequence[2].type = win32.INPUT_KEYBOARD;
+    sequence[2].Anonymous.ki.wVk = win32.VK_LSHIFT;
+    sequence[2].Anonymous.ki.dwFlags = win32.KEYEVENTF_KEYUP;
+    sequence[3].type = win32.INPUT_KEYBOARD;
+    sequence[3].Anonymous.ki.wVk = win32.VK_MENU;
+    sequence[3].Anonymous.ki.dwFlags = win32.KEYEVENTF_KEYUP;
+    const pinputs: [*]win32.INPUT = &sequence;
+    const usent = win32.SendInput(4, pinputs, @sizeOf(win32.INPUT));
+    if (usent != 4) {
+        std.debug.print("Input not sent right! Error Code: {}\n", .{win32.GetLastError()});
+    }
 }
 
 pub export fn wWinMain(
@@ -37,42 +103,16 @@ pub export fn wWinMain(
     pCmdLine: [*:0]u16,
     nCmdShow: u32,
 ) callconv(WINAPI) c_int {
+    _ = hInstance;
     _ = pCmdLine;
     _ = nCmdShow;
 
-    const CLASS_NAME = L("Sample Window Class");
-    const wc = win32.WNDCLASS{
-        .style = .{},
-        .lpfnWndProc = WindowProc,
-        .cbClsExtra = 0,
-        .cbWndExtra = 0,
-        .hInstance = hInstance,
-        .hIcon = null,
-        .hCursor = null,
-        .hbrBackground = null,
-        // TODO: this field is not marked as options so we can't use null atm
-        .lpszMenuName = L("Some Menu Name"),
-        .lpszClassName = CLASS_NAME,
-    };
-
-    if (0 == win32.RegisterClass(&wc))
-        fatal("RegisterClass failed, error={s}", .{@tagName(win32.GetLastError())});
-
-    const hwnd = win32.CreateWindowEx(.{}, CLASS_NAME, L("Hello Windows"), win32.WS_OVERLAPPEDWINDOW, win32.CW_USEDEFAULT, win32.CW_USEDEFAULT, // Position
-        400, 200, // Size
-        null, // Parent window
-        null, // Menu
-        hInstance, // Instance handle
-        null // Additional application data
-    ) orelse fatal("CreateWindow failed, error={s}", .{@tagName(win32.GetLastError())});
-
     var kb_hook: ?win32.HHOOK = undefined;
     kb_hook = win32.SetWindowsHookEx(win32.WH_KEYBOARD_LL, &kbHookProc, null, 0) orelse std.debug.panic("Hook didn't work!!!", .{});
-
-    _ = win32.ShowWindow(hwnd, .{ .SHOWNORMAL = 1 });
+    defer _ = win32.UnhookWindowsHookEx(kb_hook);
 
     var msg: win32.MSG = undefined;
-    while (win32.GetMessage(&msg, null, 0, 0) != 0) {
+    while (win32.GetMessage(&msg, null, 0, 0) > 0) {
         _ = win32.TranslateMessage(&msg);
         _ = win32.DispatchMessage(&msg);
     }
@@ -85,20 +125,5 @@ fn WindowProc(
     wParam: win32.WPARAM,
     lParam: win32.LPARAM,
 ) callconv(WINAPI) win32.LRESULT {
-    switch (uMsg) {
-        win32.WM_DESTROY => {
-            win32.PostQuitMessage(0);
-            return 0;
-        },
-        win32.WM_PAINT => {
-            var ps: win32.PAINTSTRUCT = undefined;
-            const hdc = win32.BeginPaint(hwnd, &ps);
-            _ = win32.FillRect(hdc, &ps.rcPaint, @ptrFromInt(@intFromEnum(win32.COLOR_WINDOW) + 1));
-            _ = win32.TextOutA(hdc, 20, 20, "Hello", 5);
-            _ = win32.EndPaint(hwnd, &ps);
-            return 0;
-        },
-        else => {},
-    }
     return win32.DefWindowProc(hwnd, uMsg, wParam, lParam);
 }
