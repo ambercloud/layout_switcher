@@ -26,6 +26,11 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    const is_debug = if (optimize == std.builtin.OptimizeMode.Debug) true else false;
+    const build_options = b.addOptions();
+    build_options.addOption(bool, "is_debug", is_debug);
+    exe.root_module.addOptions("build_options", build_options);
+
     const win32_module = b.addModule("win32", .{
         .root_source_file = b.path("lib/zigwin32/win32.zig"),
     });

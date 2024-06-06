@@ -1,4 +1,5 @@
 const std = @import("std");
+const build_options = @import("build_options");
 const WINAPI = std.os.windows.WINAPI;
 
 pub const UNICODE = true;
@@ -139,7 +140,9 @@ pub export fn wWinMain(
     kb_hook = win32.SetWindowsHookEx(win32.WH_KEYBOARD_LL, &kbHookProc, null, 0) orelse std.debug.panic("Hook didn't work!!!", .{});
     defer _ = win32.UnhookWindowsHookEx(kb_hook);
 
-    _ = console.FreeConsole();
+    if (build_options.is_debug == false) {
+        _ = console.FreeConsole();
+    }
 
     var msg: win32.MSG = undefined;
     while (win32.GetMessage(&msg, null, 0, 0) > 0) {
