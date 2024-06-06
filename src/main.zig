@@ -9,6 +9,7 @@ const win32 = struct {
     usingnamespace @import("win32").ui.windows_and_messaging;
     usingnamespace @import("win32").ui.input.keyboard_and_mouse;
 };
+const console = @import("win32").system.console;
 const HWND = win32.HWND;
 
 var caps_pressed: bool = false;
@@ -21,7 +22,6 @@ pub fn kbHookProc(nCode: i32, wParam: win32.WPARAM, lParam: win32.LPARAM) callco
 
     const pKeyData: *win32.KBDLLHOOKSTRUCT = @ptrFromInt(@as(usize, @bitCast(lParam)));
     const vkey = @as(win32.VIRTUAL_KEY, @enumFromInt(pKeyData.vkCode));
-    std.debug.print("Key triggered: {}\n", .{pKeyData.scanCode});
     switch (vkey) {
         win32.VK_CAPITAL => return processCaps(nCode, wParam, lParam),
         win32.VK_SHIFT => return processShift(nCode, wParam, lParam),
@@ -48,7 +48,6 @@ fn processCaps(nCode: i32, wParam: win32.WPARAM, lParam: win32.LPARAM) win32.LRE
                 caps_pressed = false;
                 return -1;
             } else {
-                std.debug.print("Caps key released while caps_pressed = false", .{});
                 return -1;
             }
         },
@@ -78,7 +77,7 @@ fn processShift(nCode: i32, wParam: win32.WPARAM, lParam: win32.LPARAM) win32.LR
     }
 }
 
-fn switchLayout() void {
+var ALT_SHIFT = alt_shift_generate: {
     var sequence = [_]win32.INPUT{std.mem.zeroInit(win32.INPUT, .{})} ** 4;
     sequence[0].type = win32.INPUT_KEYBOARD;
     sequence[0].Anonymous.ki.wVk = win32.VK_MENU;
@@ -90,8 +89,11 @@ fn switchLayout() void {
     sequence[3].type = win32.INPUT_KEYBOARD;
     sequence[3].Anonymous.ki.wVk = win32.VK_MENU;
     sequence[3].Anonymous.ki.dwFlags = win32.KEYEVENTF_KEYUP;
-    const pinputs: [*]win32.INPUT = &sequence;
-    const usent = win32.SendInput(4, pinputs, @sizeOf(win32.INPUT));
+    break :alt_shift_generate sequence;
+};
+
+fn switchLayout() void {
+    const usent = win32.SendInput(4, &ALT_SHIFT, @sizeOf(win32.INPUT));
     if (usent != 4) {
         std.debug.print("Input not sent right! Error Code: {}\n", .{win32.GetLastError()});
     }
@@ -107,9 +109,13 @@ pub export fn wWinMain(
     _ = pCmdLine;
     _ = nCmdShow;
 
+    //TODO: make mutex to avoid running several copies of the program
+
     var kb_hook: ?win32.HHOOK = undefined;
     kb_hook = win32.SetWindowsHookEx(win32.WH_KEYBOARD_LL, &kbHookProc, null, 0) orelse std.debug.panic("Hook didn't work!!!", .{});
     defer _ = win32.UnhookWindowsHookEx(kb_hook);
+
+    _ = console.FreeConsole();
 
     var msg: win32.MSG = undefined;
     while (win32.GetMessage(&msg, null, 0, 0) > 0) {
