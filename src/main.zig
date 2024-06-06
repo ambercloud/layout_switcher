@@ -22,9 +22,13 @@ pub fn kbHookProc(nCode: i32, wParam: win32.WPARAM, lParam: win32.LPARAM) callco
 
     const pKeyData: *win32.KBDLLHOOKSTRUCT = @ptrFromInt(@as(usize, @bitCast(lParam)));
     const vkey = @as(win32.VIRTUAL_KEY, @enumFromInt(pKeyData.vkCode));
+    const is_injected = pKeyData.flags.INJECTED;
+    if (is_injected == 1) {
+        return win32.CallNextHookEx(null, nCode, wParam, lParam);
+    }
     switch (vkey) {
         win32.VK_CAPITAL => return processCaps(nCode, wParam, lParam),
-        win32.VK_SHIFT => return processShift(nCode, wParam, lParam),
+        win32.VK_SHIFT, win32.VK_LSHIFT, win32.VK_RSHIFT => return processShift(nCode, wParam, lParam),
         else => return win32.CallNextHookEx(null, nCode, wParam, lParam),
     }
 }
@@ -38,8 +42,11 @@ fn processCaps(nCode: i32, wParam: win32.WPARAM, lParam: win32.LPARAM) win32.LRE
                 return -1;
             } else {
                 caps_pressed = true;
-                //TODO: if shift pressed then instead of switching layout toggle caps lock
-                switchLayout();
+                if (shift_pressed) {
+                    toggleCaps();
+                } else {
+                    switchLayout();
+                }
                 return -1;
             }
         },
@@ -77,7 +84,7 @@ fn processShift(nCode: i32, wParam: win32.WPARAM, lParam: win32.LPARAM) win32.LR
     }
 }
 
-var ALT_SHIFT = alt_shift_generate: {
+var ALT_SHIFT_SEQUENCE = alt_shift_generate: {
     var sequence = [_]win32.INPUT{std.mem.zeroInit(win32.INPUT, .{})} ** 4;
     sequence[0].type = win32.INPUT_KEYBOARD;
     sequence[0].Anonymous.ki.wVk = win32.VK_MENU;
@@ -93,8 +100,25 @@ var ALT_SHIFT = alt_shift_generate: {
 };
 
 fn switchLayout() void {
-    const usent = win32.SendInput(4, &ALT_SHIFT, @sizeOf(win32.INPUT));
+    const usent = win32.SendInput(4, &ALT_SHIFT_SEQUENCE, @sizeOf(win32.INPUT));
     if (usent != 4) {
+        std.debug.print("Input not sent right! Error Code: {}\n", .{win32.GetLastError()});
+    }
+}
+
+var CAPS_SEQUENCE = caps_generate: {
+    var sequence = [_]win32.INPUT{std.mem.zeroInit(win32.INPUT, .{})} ** 2;
+    sequence[0].type = win32.INPUT_KEYBOARD;
+    sequence[0].Anonymous.ki.wVk = win32.VK_CAPITAL;
+    sequence[1].type = win32.INPUT_KEYBOARD;
+    sequence[1].Anonymous.ki.wVk = win32.VK_CAPITAL;
+    sequence[1].Anonymous.ki.dwFlags = win32.KEYEVENTF_KEYUP;
+    break :caps_generate sequence;
+};
+
+fn toggleCaps() void {
+    const usent = win32.SendInput(2, &CAPS_SEQUENCE, @sizeOf(win32.INPUT));
+    if (usent != 2) {
         std.debug.print("Input not sent right! Error Code: {}\n", .{win32.GetLastError()});
     }
 }
