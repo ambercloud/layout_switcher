@@ -11,6 +11,7 @@ const win32 = struct {
     usingnamespace @import("win32").ui.input.keyboard_and_mouse;
 };
 const console = @import("win32").system.console;
+const createMutex = @import("win32").system.threading.CreateMutexA;
 const HWND = win32.HWND;
 
 const kbHookProc = @import("kbhookproc.zig").kbHookProc;
@@ -25,7 +26,10 @@ pub export fn wWinMain(
     _ = pCmdLine;
     _ = nCmdShow;
 
-    //TODO: make mutex to avoid running several copies of the program
+    //make mutex to avoid running several copies of the program
+    const mutexId = "caps switcher";
+    _ = createMutex(null, 0, mutexId);
+    if (win32.GetLastError() == win32.ERROR_ALREADY_EXISTS) @panic("Another instance is already running.");
 
     var kb_hook: ?win32.HHOOK = undefined;
     kb_hook = win32.SetWindowsHookEx(win32.WH_KEYBOARD_LL, &kbHookProc, null, 0) orelse std.debug.panic("Hook didn't work!!!", .{});
