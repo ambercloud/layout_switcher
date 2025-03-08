@@ -24,7 +24,10 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
+        .strip = true,
     });
+
+    exe.want_lto = true;
 
     const is_debug = if (optimize == std.builtin.OptimizeMode.Debug) true else false;
     const build_options = b.addOptions();
