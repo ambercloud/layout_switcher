@@ -1,6 +1,8 @@
 const std = @import("std");
 const WINAPI = std.os.windows.WINAPI;
 
+const build_options = @import("build_options");
+
 const win32 = struct {
     usingnamespace @import("win32").zig;
     usingnamespace @import("win32").foundation;
@@ -98,8 +100,10 @@ var ALT_SHIFT_SEQUENCE = alt_shift_generate: {
 
 fn switchLayout() void {
     const usent = win32.SendInput(4, &ALT_SHIFT_SEQUENCE, @sizeOf(win32.INPUT));
-    if (usent != 4) {
-        std.debug.print("Input not sent right! Error Code: {}\n", .{win32.GetLastError()});
+    if (build_options.is_debug == true) {
+        if (usent != 4) {
+            std.debug.print("Input not sent right! Error Code: {}\n", .{win32.GetLastError()});
+        }
     }
 }
 
@@ -115,7 +119,9 @@ var CAPS_SEQUENCE = caps_generate: {
 
 fn toggleCaps() void {
     const usent = win32.SendInput(2, &CAPS_SEQUENCE, @sizeOf(win32.INPUT));
-    if (usent != 2) {
-        std.debug.print("Input not sent right! Error Code: {}\n", .{win32.GetLastError()});
+    if (build_options.is_debug == true) {
+        if (usent != 2) {
+            std.debug.print("Input not sent right! Error Code: {}\n", .{win32.GetLastError()});
+        }
     }
 }

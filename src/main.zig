@@ -32,7 +32,7 @@ pub export fn wWinMain(
     if (win32.GetLastError() == win32.ERROR_ALREADY_EXISTS) @panic("Another instance is already running.");
 
     var kb_hook: ?win32.HHOOK = undefined;
-    kb_hook = win32.SetWindowsHookEx(win32.WH_KEYBOARD_LL, &kbHookProc, null, 0) orelse std.debug.panic("Hook didn't work!!!", .{});
+    kb_hook = win32.SetWindowsHookEx(win32.WH_KEYBOARD_LL, &kbHookProc, null, 0);
     defer _ = win32.UnhookWindowsHookEx(kb_hook);
 
     if (build_options.is_debug == false) {

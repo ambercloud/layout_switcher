@@ -19,17 +19,18 @@ pub fn build(b: *std.Build) void {
     // location when the user invokes the "install" step (the default step when
     // running `zig build`).
 
+    const is_debug = if (optimize == std.builtin.OptimizeMode.Debug) true else false;
+
     const exe = b.addExecutable(.{
         .name = "layout_switcher",
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
-        .strip = true,
+        .strip = if (is_debug == true) false else true,
     });
 
-    exe.want_lto = true;
+    exe.want_lto = if (is_debug == true) false else true;
 
-    const is_debug = if (optimize == std.builtin.OptimizeMode.Debug) true else false;
     const build_options = b.addOptions();
     build_options.addOption(bool, "is_debug", is_debug);
     exe.root_module.addOptions("build_options", build_options);
